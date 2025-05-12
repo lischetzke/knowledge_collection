@@ -1,0 +1,48 @@
+# AMD Instinct MI50 on VMware ESXi 8 with PCIe Passthrough
+
+- Enable PCIe Passthrough
+- On ESXi modify `/etc/vmware/passthru.map`
+
+```txt
+# <Old content here>
+
+# Add for AMD Instinct (this was working for me)
+1022  ffff  d3d0     false
+1002  66a1  d3d0     default
+```
+
+- Reboot ESXi
+- Create new VM, I've used
+  - CPU: 4 Cores (4 per CPU)
+    - Enabled IOMMU
+  - MEM: 16G (fully allocated)
+  - Boot: EFI
+  - OS: Ubuntu Server 20.04
+  - Advanced options:
+    - `pciPassthru.msiEnabled = FALSE`
+    - `pciPassthru0.msiEnabled = FALSE`
+    - `SMBIOS.reflectHost = TRUE`
+    - `pciHole.start = 2048`
+    - `pciHole.end = 3072`
+    - `pciPassthru.64bitMMIOSizeGB = 64`
+    - `pciPassthru.use64bitMMIO = TRUE`
+    - `hypervisor.cpuid.v0 = FALSE`
+- Install Ubuntu Server 20.04
+  - Install Linux Kernel 5.15-generic + headers and modules (i.e. in my case 5.15.0-139-generic)
+    - `sudo apt install linux-image-5.15.0-139-generic linux-headers-5.15.0-139-generic linux-modules-extra-5.15.0-139-generic`
+  - Reboot
+  - `wget https://repo.radeon.com/amdgpu-install/5.7.1/ubuntu/focal/amdgpu-install_5.7.50701-1_all.deb`
+  - `sudo apt install ./amdgpu-install_5.7.50701-1_all.deb`
+  - `sudo amdgpu-install --usecase=rocm`
+  - `sudo usermod -a -G render,video $LOGNAME`
+- Install Miniconda
+  - Create new env with python 3.10
+  - `pip3 install --upgrade pip wheel`
+  - `wget https://repo.radeon.com/rocm/manylinux/.private-05b1d2750b39ef78de979ed9f59ce4c6/297/torch-2.2.0.dev20231114%2Brocm5.7-cp310-cp310-linux_x86_64.whl`
+  - `wget https://repo.radeon.com/rocm/manylinux/.private-05b1d2750b39ef78de979ed9f59ce4c6/297/torchvision-0.17.0%2Brocm5.7-cp310-cp310-linux_x86_64.whl`
+  - `pip3 install --force-reinstall torch-2.2.0.dev20231114%2Brocm5.7-cp310-cp310-linux_x86_64.whl torchvision-0.17.0%2Brocm5.7-cp310-cp310-linux_x86_64.whl`
+  - `pip3 install "numpy<2"` (This is very important for i.e. ultralytics and need to be checked after install of any package that might use it)
+  - `python3 -c 'import torch' 2> /dev/null && echo 'Success' || echo 'Failure'`
+  - `python3 -c 'import torch; print(torch.cuda.is_available())'`
+  - `python3 -c "import torch; print(f'device name [0]:', torch.cuda.get_device_name(0))"`
+  - `python3 -m torch.utils.collect_env`
